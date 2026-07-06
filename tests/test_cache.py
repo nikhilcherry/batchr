@@ -1,0 +1,101 @@
+from __future__ import annotations
+
+import sqlite3
+import time
+from pathlib import Path
+
+from batchr.cache import CacheStore
+
+
+def test_put_get_roundtrip_pickle(tmp_path):
+    store = CacheStore(tmp_path / ".batchr")
+    path = store.put("deadbeef", "item1", {"a": 1}, "pickle")
+    assert path.exists()
+    assert store.get("deadbeef") == path
+
+    import pickle
+
+    with open(path, "rb") as f:
+        assert pickle.load(f) == {"a": 1}
+
+
+def test_put_get_roundtrip_json(tmp_path):
+    store = CacheStore(tmp_path / ".batchr")
+    path = store.put("cafebabe", "item1", {"a": 1}, "json")
+    assert store.get("cafebabe") == path
+
+    import json
+
+    with open(path) as f:
+        assert json.load(f) == {"a": 1}
+
+
+def test_get_missing_key_returns_none(tmp_path):
+    store = CacheStore(tmp_path / ".batchr")
+    assert store.get("does-not-exist") is None
+
+
+def test_sharding_by_first_two_hex_chars(tmp_path):
+    store = CacheStore(tmp_path / ".batchr")
+    key = "ab1234567890"
+    path = store.put(key, "item1", "value", "pickle")
+    assert path.parent.name == "ab"
+    assert path.parent.parent.name == "objects"
+
+
+def test_no_tmp_files_remain_after_put(tmp_path):
+    store = CacheStore(tmp_path / ".batchr")
+    for i in range(5):
+        store.put(f"key{i}", f"item{i}", i, "pickle")
+
+    tmp_files = list((tmp_path / ".batchr" / "objects").rglob("*.tmp"))
+    assert tmp_files == []
+
+
+def test_stats_counts_and_size(tmp_path):
+    store = CacheStore(tmp_path / ".batchr")
+    store.put("key1", "item1", "hello world", "pickle")
+    store.put("key2", "item2", "another value", "pickle")
+
+    stats = store.stats()
+    assert stats["entries"] == 2
+    assert stats["size_bytes"] > 0
+    assert stats["cache_dir"] == str(tmp_path / ".batchr")
+
+
+def test_purge_removes_old_entries(tmp_path):
+    store = CacheStore(tmp_path / ".batchr")
+    store.put("old_key", "item_old", "old", "pickle")
+    store.put("new_key", "item_new", "new", "pickle")
+
+    # backdate the "old_key" row directly, since created_at defaults to now()
+    conn = sqlite3.connect(store.db_path)
+    old_time = time.time() - (40 * 86400)
+    conn.execute("UPDATE cache SET created_at = ? WHERE cache_key = ?", (old_time, "old_key"))
+    conn.commit()
+    conn.close()
+
+    removed = store.purge(older_than_days=30)
+    assert removed == 1
+    assert store.get("old_key") is None
+    assert store.get("new_key") is not None
+    assert store.stats()["entries"] == 1
+
+
+def test_put_overwrites_existing_key(tmp_path):
+    store = CacheStore(tmp_path / ".batchr")
+    store.put("k", "item", "first", "pickle")
+    path = store.put("k", "item", "second", "pickle")
+
+    import pickle
+
+    with open(path, "rb") as f:
+        assert pickle.load(f) == "second"
+    assert store.stats()["entries"] == 1
+
+
+def test_get_returns_none_if_output_file_missing(tmp_path):
+    store = CacheStore(tmp_path / ".batchr")
+    path = store.put("k", "item", "value", "pickle")
+    path.unlink()
+    assert store.get("k") is None
