@@ -186,7 +186,9 @@ def run_batch(
     _check_picklable(fn)
 
     items = [str(item) for item in items]
-    cache_dir = Path(cache_dir)
+    # Resolve once so the store and last_report.json agree on one directory
+    # even if the process chdirs mid-run (common in notebooks).
+    cache_dir = Path(cache_dir).expanduser().resolve()
     store = CacheStore(cache_dir)
     resolved_workers = workers or os.cpu_count() or 1
 

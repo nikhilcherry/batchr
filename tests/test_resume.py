@@ -96,4 +96,6 @@ def test_atomicity_no_orphan_tmp_files_and_index_matches_disk(tmp_path):
 
     assert len(rows) == 4  # only the 4 successful items were cached
     for _key, output_file in rows:
-        assert Path(output_file).exists()
+        # rows are stored relative to cache_dir so the cache is relocatable
+        assert not Path(output_file).is_absolute()
+        assert (Path(cache_dir) / output_file).exists()

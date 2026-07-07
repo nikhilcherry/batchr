@@ -60,7 +60,10 @@ class CacheStore:
     """The cache for a single ``cache_dir``."""
 
     def __init__(self, cache_dir: str | Path):
-        self.cache_dir = Path(cache_dir)
+        # Pin a relative cache_dir to the cwd at construction time. Notebook
+        # and CLI sessions chdir freely between runs; without this, the same
+        # ".batchr" silently becomes a different directory.
+        self.cache_dir = Path(cache_dir).expanduser().resolve()
         self.objects_dir = self.cache_dir / "objects"
         self.db_path = self.cache_dir / "index.sqlite"
         self._init_db()
@@ -107,6 +110,12 @@ class CacheStore:
         if row is None:
             return None
         path = Path(row[0])
+        # Rows are stored relative to cache_dir so the cache directory can be
+        # moved or re-mounted (Drive, /kaggle/working) without invalidating
+        # anything. Absolute rows from caches written by older versions still
+        # resolve as-is.
+        if not path.is_absolute():
+            path = self.cache_dir / path
         if not path.exists():
             return None
         return path
@@ -126,7 +135,7 @@ class CacheStore:
             conn.execute(
                 "INSERT OR REPLACE INTO cache "
                 "(cache_key, item, output_file, created_at, fn_name) VALUES (?, ?, ?, ?, ?)",
-                (key, item, str(final_path), time.time(), fn_name),
+                (key, item, str(final_path.relative_to(self.cache_dir)), time.time(), fn_name),
             )
             conn.commit()
         finally:
@@ -156,6 +165,8 @@ class CacheStore:
             ).fetchall()
             for _key, output_file in rows:
                 path = Path(output_file)
+                if not path.is_absolute():
+                    path = self.cache_dir / path
                 if path.exists():
                     path.unlink()
             conn.execute("DELETE FROM cache WHERE created_at < ?", (cutoff,))

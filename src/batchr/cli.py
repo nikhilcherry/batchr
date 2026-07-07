@@ -17,6 +17,12 @@ def _import_fn(spec: str):
     if ":" not in spec:
         raise ValueError(f"--fn must be in 'module:function' form, got {spec!r}")
     module_name, func_name = spec.split(":", 1)
+    # As an installed console script, sys.path contains the script's own
+    # directory, not the cwd — so `--fn mymodule:process` for a mymodule.py
+    # sitting next to the data would fail to import without this.
+    cwd = str(Path.cwd())
+    if cwd not in sys.path:
+        sys.path.insert(0, cwd)
     module = importlib.import_module(module_name)
     try:
         return getattr(module, func_name)
