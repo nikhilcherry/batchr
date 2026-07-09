@@ -119,6 +119,31 @@ def test_cli_purge(tmp_path):
     assert "Entries: 0" in status.stdout
 
 
+def test_cli_run_imports_fn_module_from_invoking_cwd_without_pythonpath(tmp_path):
+    """Regression test for the cwd-import bug: `--fn mymodule:fn` must resolve
+    when `mymodule.py` lives in the invoking directory, even though batchr is
+    installed as a console script (whose sys.path doesn't include the cwd by
+    default). Unlike the other subprocess tests in this file, this one does
+    NOT set PYTHONPATH — that would mask the bug by making the import work
+    for an unrelated reason. The only thing that can make this pass is
+    cli.py inserting os.getcwd() into sys.path itself.
+    """
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    (data_dir / "f0.txt").write_text("hello")
+
+    (tmp_path / "workmod.py").write_text(WORKER_SRC)
+    cache_dir = tmp_path / ".batchr"
+
+    result = subprocess.run(
+        [sys.executable, "-m", "batchr.cli", "run", "--fn", "workmod:process",
+         "--items", str(data_dir), "--cache-dir", str(cache_dir)],
+        cwd=tmp_path, env=os.environ.copy(), capture_output=True, text=True, timeout=60,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "1 ok" in result.stdout
+
+
 def test_cli_items_txt_file(tmp_path):
     data_dir = tmp_path / "data"
     data_dir.mkdir()
