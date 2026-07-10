@@ -10,6 +10,19 @@ already computed. If the process is killed at item 4,000 of 10,000,
 re-running resumes at 4,001 — nothing is ever recomputed unless its
 inputs actually changed, and nothing is ever silently stale.
 
+## Install
+
+`batchr` isn't published to PyPI — install straight from GitHub:
+
+```bash
+pip install git+https://github.com/nikhilcherry/batchr
+```
+
+If you're setting this up as part of team Arvyo's finale pipeline (pinned
+to a commit SHA, alongside `trackr`/`peekr`/`foldr`/`fitr`), use
+`arvyo-pipeline/docs/finale_setup.md` instead of a bare install — it's the
+one canonical, reproducible setup cell for that use case.
+
 ## Quickstart
 
 ### Python API
