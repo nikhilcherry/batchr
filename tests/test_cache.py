@@ -99,3 +99,40 @@ def test_get_returns_none_if_output_file_missing(tmp_path):
     path = store.put("k", "item", "value", "pickle")
     path.unlink()
     assert store.get("k") is None
+
+
+def test_purge_orphaned_tmp_files_removes_leftover_tmp_only(tmp_path):
+    store = CacheStore(tmp_path / ".batchr")
+    store.put("key1", "item1", "hello", "pickle")
+
+    # Simulate a process killed between _serialize() and os.replace() in put().
+    orphan_dir = store.objects_dir / "de"
+    orphan_dir.mkdir(parents=True)
+    orphan = orphan_dir / "deadbeef.pkl.tmp"
+    orphan.write_bytes(b"partial")
+
+    removed = store.purge_orphaned_tmp_files()
+
+    assert removed == 1
+    assert not orphan.exists()
+    # the real, committed entry must be untouched
+    assert store.get("key1") is not None
+
+
+def test_purge_orphaned_tmp_files_no_op_when_none_exist(tmp_path):
+    store = CacheStore(tmp_path / ".batchr")
+    store.put("key1", "item1", "hello", "pickle")
+    assert store.purge_orphaned_tmp_files() == 0
+
+
+def test_stats_reports_orphaned_tmp_files(tmp_path):
+    store = CacheStore(tmp_path / ".batchr")
+    store.put("key1", "item1", "hello", "pickle")
+
+    orphan_dir = store.objects_dir / "de"
+    orphan_dir.mkdir(parents=True)
+    (orphan_dir / "deadbeef.pkl.tmp").write_bytes(b"partial data")
+
+    stats = store.stats()
+    assert stats["orphaned_tmp_files"] == 1
+    assert stats["orphaned_tmp_bytes"] == len(b"partial data")

@@ -105,6 +105,20 @@ not-yet-computed and recomputed. Only the parent process ever writes to
 SQLite; workers return plain values and the parent does all
 serialization and committing.
 
+Orphaned tmp files are otherwise harmless (never returned as a cache
+hit) but do sit on disk forever unless cleaned up. `batchr status` counts
+and sizes them; `batchr purge --orphaned` deletes them:
+
+```bash
+batchr status --cache-dir .batchr
+# Orphaned .tmp files: 3 (14212 bytes) — left behind by a killed process, ...
+batchr purge --orphaned --cache-dir .batchr
+```
+
+Only run `--orphaned` when no other `batchr` process is currently writing
+to the same `--cache-dir` — a write in progress also has a `.tmp` file on
+disk momentarily.
+
 Failed items follow the same rule: a raised exception is recorded in the
 report with a full traceback and is **never** cached, so the next run
 retries exactly the items that failed — nothing else.

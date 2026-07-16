@@ -69,6 +69,12 @@ def _cmd_status(args: argparse.Namespace) -> int:
     print(f"Cache dir: {stats['cache_dir']}")
     print(f"Entries: {stats['entries']}")
     print(f"Size on disk: {stats['size_bytes']} bytes")
+    if stats["orphaned_tmp_files"]:
+        print(
+            f"Orphaned .tmp files: {stats['orphaned_tmp_files']} "
+            f"({stats['orphaned_tmp_bytes']} bytes) — left behind by a killed "
+            "process, safe to remove with `batchr purge --orphaned`"
+        )
     print(f"Last run: {report.summary() if report else 'no report found'}")
     return 0
 
@@ -92,6 +98,9 @@ def _cmd_purge(args: argparse.Namespace) -> int:
     store = CacheStore(Path(args.cache_dir))
     n = store.purge(args.older_than)
     print(f"Purged {n} entries older than {args.older_than} day(s).")
+    if args.orphaned:
+        n_orphaned = store.purge_orphaned_tmp_files()
+        print(f"Purged {n_orphaned} orphaned .tmp file(s).")
     return 0
 
 
@@ -121,6 +130,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_purge = sub.add_parser("purge", help="Delete cache entries older than N days")
     p_purge.add_argument("--older-than", type=float, default=30)
+    p_purge.add_argument(
+        "--orphaned", action="store_true",
+        help="Also delete leftover .tmp files from a killed process (run only "
+        "when no other batchr process is writing to this cache-dir)",
+    )
     p_purge.add_argument("--cache-dir", default=".batchr")
     p_purge.set_defaults(func=_cmd_purge)
 

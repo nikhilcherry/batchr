@@ -122,6 +122,43 @@ def test_cli_purge(tmp_path):
     assert "Entries: 0" in status.stdout
 
 
+def test_cli_purge_orphaned_and_status_reports_it(tmp_path):
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    (data_dir / "f0.txt").write_text("hello")
+
+    (tmp_path / "cli_worker.py").write_text(WORKER_SRC)
+    env = _env_with_pythonpath(tmp_path)
+    cache_dir = tmp_path / ".batchr"
+
+    _run_cli(
+        ["run", "--fn", "cli_worker:process", "--items", str(data_dir), "--cache-dir", str(cache_dir)],
+        cwd=tmp_path, env=env,
+    )
+
+    # Simulate a killed process leaving a .tmp file behind.
+    objects_dir = cache_dir / "objects"
+    orphan_dir = objects_dir / "zz"
+    orphan_dir.mkdir(parents=True)
+    (orphan_dir / "orphan.pkl.tmp").write_bytes(b"partial")
+
+    status = _run_cli(["status", "--cache-dir", str(cache_dir)], cwd=tmp_path, env=env)
+    assert status.returncode == 0
+    assert "Orphaned .tmp files: 1" in status.stdout
+
+    purge = _run_cli(
+        ["purge", "--older-than", "9999", "--orphaned", "--cache-dir", str(cache_dir)],
+        cwd=tmp_path, env=env,
+    )
+    assert purge.returncode == 0
+    assert "Purged 1 orphaned .tmp file(s)." in purge.stdout
+    assert not (orphan_dir / "orphan.pkl.tmp").exists()
+
+    # the real cached entry (created above) must survive an --older-than 9999 purge
+    status2 = _run_cli(["status", "--cache-dir", str(cache_dir)], cwd=tmp_path, env=env)
+    assert "Entries: 1" in status2.stdout
+
+
 def test_cli_run_imports_fn_module_from_invoking_cwd_without_pythonpath(tmp_path):
     """`--fn mymodule:fn` must resolve when `mymodule.py` lives in the
     invoking directory, without PYTHONPATH set.

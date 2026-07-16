@@ -148,12 +148,34 @@ class CacheStore:
             (count,) = conn.execute("SELECT COUNT(*) FROM cache").fetchone()
         finally:
             conn.close()
-        size_bytes = sum(f.stat().st_size for f in self.objects_dir.rglob("*") if f.is_file())
+        all_files = [f for f in self.objects_dir.rglob("*") if f.is_file()]
+        tmp_files = [f for f in all_files if f.suffix == ".tmp"]
+        size_bytes = sum(f.stat().st_size for f in all_files)
         return {
             "entries": count,
             "size_bytes": size_bytes,
             "cache_dir": str(self.cache_dir),
+            "orphaned_tmp_files": len(tmp_files),
+            "orphaned_tmp_bytes": sum(f.stat().st_size for f in tmp_files),
         }
+
+    def purge_orphaned_tmp_files(self) -> int:
+        """Delete leftover ``*.tmp`` files under ``objects/``. Returns count removed.
+
+        A ``.tmp`` file is written by ``put()`` and immediately renamed onto
+        its final path (see module docstring / README "Crash safety"); the
+        only way one is left lying around is a process getting killed
+        between the write and the rename. It never has a matching index
+        row (the row is only committed after the rename), so it can't be a
+        cache hit — it's pure disk waste. Only safe to call when no other
+        ``batchr`` process is currently writing to this cache_dir, since a
+        write in progress also has a ``.tmp`` file on disk momentarily.
+        """
+        removed = 0
+        for path in self.objects_dir.rglob("*.tmp"):
+            path.unlink()
+            removed += 1
+        return removed
 
     def purge(self, older_than_days: float) -> int:
         """Delete entries (and their output files) older than ``older_than_days``. Returns count removed."""
