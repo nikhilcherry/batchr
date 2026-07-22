@@ -195,6 +195,10 @@ def run_batch(
     start = time.monotonic()
     results: dict[int, ItemResult] = {}
     to_run: list[tuple[int, str, str]] = []
+    # Two indices with the same cache key (e.g. the same item listed twice)
+    # only need fn run once; every later occurrence rides on the first's result.
+    primary_of_key: dict[str, int] = {}
+    duplicates_of: dict[int, list[int]] = {}
 
     for i, item in enumerate(items):
         key = compute_cache_key(item, fn, config, serializer)
@@ -204,7 +208,10 @@ def run_batch(
                 item=item, status="cached", output_path=cached_path,
                 error=None, duration_s=0.0, cache_key=key,
             )
+        elif key in primary_of_key:
+            duplicates_of.setdefault(primary_of_key[key], []).append(i)
         else:
+            primary_of_key[key] = i
             to_run.append((i, item, key))
 
     progress = tqdm(total=len(items), disable=not sys.stdout.isatty())
@@ -221,6 +228,7 @@ def run_batch(
             )
             counts["ok"] += 1
         else:
+            output_path = None
             results[i] = ItemResult(
                 item=item, status="failed", output_path=None,
                 error=error, duration_s=duration, cache_key=key,
@@ -228,6 +236,15 @@ def run_batch(
             counts["failed"] += 1
         progress.update(1)
         progress.set_postfix(counts)
+
+        for dup_i in duplicates_of.pop(i, []):
+            results[dup_i] = ItemResult(
+                item=items[dup_i], status="cached" if status == "ok" else "failed",
+                output_path=output_path, error=error, duration_s=0.0, cache_key=key,
+            )
+            counts["cached" if status == "ok" else "failed"] += 1
+            progress.update(1)
+            progress.set_postfix(counts)
 
     if to_run:
         run_pool(fn, to_run, resolved_workers, retries, fail_fast, on_result)

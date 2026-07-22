@@ -57,6 +57,27 @@ def test_cache_hit_second_run_calls_worker_zero_times(tmp_path):
     assert len(calls_after_second) == 4  # worker was not invoked again
 
 
+def test_duplicate_items_in_one_batch_run_fn_only_once(tmp_path):
+    items = _make_files(tmp_path, 2)
+    duped = [items[0], items[1], items[0], items[0]]
+    cache_dir = str(tmp_path / ".batchr")
+
+    report = run_batch(workers.read_upper_counting, duped, cache_dir=cache_dir)
+
+    assert report.total == 4
+    assert report.ok == 2  # one per distinct item
+    assert report.cached == 2  # the two repeats of items[0]
+    assert report.failed == 0
+    calls = (tmp_path / "_calls.log").read_text().splitlines()
+    assert len(calls) == 2  # fn ran exactly once per distinct item
+
+    statuses = [r.status for r in report.results]
+    assert statuses == ["ok", "ok", "cached", "cached"]
+    # every result for items[0] points at the same output file
+    dup_outputs = {r.output_path for r in report.results if r.item == items[0]}
+    assert len(dup_outputs) == 1
+
+
 def test_invalidation_on_file_content_change(tmp_path):
     items = _make_files(tmp_path, 3)
     cache_dir = str(tmp_path / ".batchr")
