@@ -61,6 +61,18 @@ exits 0 if nothing failed, 1 otherwise — safe to use as a CI gate.
 
 ## The cache-key recipe
 
+```mermaid
+flowchart LR
+    A["item bytes\n(file content, chunked,\nor the item string itself)"] --> H["sha256(...)"]
+    B["fn source\n(inspect.getsource)"] --> H
+    C["config\n(json.dumps, sort_keys)"] --> H
+    D["serializer name\n(pickle / json / npz)"] --> H
+    H --> K["cache key"]
+    K --> Q{"key in index.sqlite\nAND output file exists?"}
+    Q -->|yes| HIT["cached — fn(item) not called"]
+    Q -->|no| MISS["run fn(item), store result, index the key"]
+```
+
 Every item's cache key is a single SHA-256 hash, updated in this exact
 order:
 
@@ -95,6 +107,19 @@ in the SQLite index. The write path is:
    filesystem.
 3. Commit the index row (`INSERT OR REPLACE INTO cache ...`) in the
    parent process.
+
+```mermaid
+sequenceDiagram
+    participant Worker as worker process
+    participant Parent as parent process
+    participant FS as objects/{shard}/
+    participant DB as index.sqlite
+    Worker-->>Parent: return plain value
+    Parent->>FS: 1. write {key}.{ext}.tmp
+    Parent->>FS: 2. os.replace() to final path (atomic)
+    Parent->>DB: 3. INSERT OR REPLACE INTO cache
+    Note over Parent,DB: killed before step 3 finishes? next run finds no index row,<br/>so the item is just recomputed -- never a bad cache hit.
+```
 
 If the process is killed at any point before step 3 finishes, the
 worst case is an orphaned tmp file or an output file with no matching
