@@ -16,6 +16,7 @@ import json
 import os
 import pickle
 import sqlite3
+import tempfile
 import time
 from pathlib import Path
 from typing import Any
@@ -121,12 +122,24 @@ class CacheStore:
         return path
 
     def put(self, key: str, item: str, obj: Any, serializer: str, fn_name: str = "") -> Path:
-        """Write ``obj`` atomically (tmp file + rename) then commit the index row."""
+        """Write ``obj`` atomically (tmp file + rename) then commit the index row.
+
+        The tmp filename is unique per call (not just per cache key): two
+        concurrent writers computing the same key -- two independently
+        invoked ``batchr run`` processes sharing a cache_dir is the normal
+        way this happens -- would otherwise both write to the exact same
+        deterministic ``<key>.tmp`` path, and one process's os.replace()
+        would find the other's tmp file already gone (or vice versa),
+        crashing with FileNotFoundError instead of the atomicity this
+        docstring promises.
+        """
         ext = _EXTENSIONS.get(serializer)
         if ext is None:
             raise ValueError(f"Unknown serializer: {serializer!r}")
         final_path = self._shard_path(key, ext)
-        tmp_path = final_path.with_name(final_path.name + ".tmp")
+        fd, tmp_name = tempfile.mkstemp(dir=final_path.parent, prefix=f".{final_path.name}-", suffix=".tmp")
+        os.close(fd)
+        tmp_path = Path(tmp_name)
         _serialize(obj, tmp_path, serializer)
         os.replace(tmp_path, final_path)
 

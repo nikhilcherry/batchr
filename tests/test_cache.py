@@ -99,6 +99,35 @@ def test_put_overwrites_existing_key(tmp_path):
     assert store.stats()["entries"] == 1
 
 
+def test_concurrent_put_same_key_does_not_crash(tmp_path):
+    # Two writers computing the same cache key -- the normal way this
+    # happens is two independently invoked `batchr run` processes sharing
+    # a cache_dir -- used to both write to the exact same deterministic
+    # "<key>.tmp" path. One's os.replace() would then find the other's
+    # tmp file already gone (or vice versa), crashing with
+    # FileNotFoundError instead of completing atomically.
+    import threading
+
+    store = CacheStore(tmp_path / ".batchr")
+    errors = []
+
+    def writer(value):
+        try:
+            store.put("samekey", "item", {"v": value}, "pickle")
+        except Exception as exc:
+            errors.append(exc)
+
+    threads = [threading.Thread(target=writer, args=(i,)) for i in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert errors == []
+    assert store.stats()["entries"] == 1
+    assert store.stats()["orphaned_tmp_files"] == 0
+
+
 def test_get_returns_none_if_output_file_missing(tmp_path):
     store = CacheStore(tmp_path / ".batchr")
     path = store.put("k", "item", "value", "pickle")
