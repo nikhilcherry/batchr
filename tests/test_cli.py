@@ -101,6 +101,37 @@ def test_cli_run_exit_code_1_on_failures_and_failed_command_shows_traceback(tmp_
     assert "ValueError" in failed.stdout
 
 
+def test_cli_run_bad_fn_module_prints_clean_error(tmp_path):
+    env = _env_with_pythonpath(tmp_path)
+    (tmp_path / "data.txt").write_text("hello")
+
+    result = _run_cli(
+        ["run", "--fn", "no_such_module:process", "--items", str(tmp_path / "data.txt"),
+         "--cache-dir", str(tmp_path / ".batchr")],
+        cwd=tmp_path, env=env,
+    )
+    assert result.returncode == 2
+    assert "Traceback" not in result.stderr
+    assert "Error:" in result.stderr
+    assert "no_such_module" in result.stderr
+
+
+def test_cli_run_missing_config_file_prints_clean_error(tmp_path):
+    (tmp_path / "cli_worker.py").write_text(WORKER_SRC)
+    (tmp_path / "data.txt").write_text("hello")
+    env = _env_with_pythonpath(tmp_path)
+
+    result = _run_cli(
+        ["run", "--fn", "cli_worker:process", "--items", str(tmp_path / "data.txt"),
+         "--config", str(tmp_path / "missing_config.json"),
+         "--cache-dir", str(tmp_path / ".batchr")],
+        cwd=tmp_path, env=env,
+    )
+    assert result.returncode == 2
+    assert "Traceback" not in result.stderr
+    assert "Error:" in result.stderr
+
+
 def test_cli_purge(tmp_path):
     data_dir = tmp_path / "data"
     data_dir.mkdir()
