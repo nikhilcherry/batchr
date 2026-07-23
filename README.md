@@ -1,6 +1,26 @@
 # batchr
 
+<p align="center">
+  <img alt="python" src="https://img.shields.io/badge/python-3.9%2B-blue">
+  <img alt="cache" src="https://img.shields.io/badge/cache-content--hashed_%2B_resumable-8b5cf6">
+  <img alt="license" src="https://img.shields.io/badge/license-MIT-green">
+</p>
+
 `make` for "run this function over these 10,000 files."
+
+```mermaid
+flowchart LR
+    I["item"] --> H["SHA-256(item bytes\n+ fn source\n+ config\n+ serializer)"]
+    H --> C{"cache_key\nin index.sqlite?"}
+    C -- hit --> SKIP["skip — return cached output"]
+    C -- miss --> W["ProcessPoolExecutor worker"]
+    W --> TMP["write output to tmp file"]
+    TMP --> ATOMIC["os.replace() onto final path\n(atomic)"]
+    ATOMIC --> COMMIT["parent commits index row"]
+    COMMIT --> DONE["cache hit on next run"]
+```
+
+Killed mid-run? Nothing before the final `INSERT OR REPLACE` commit counts as cached — so a kill at item 4,000 of 10,000 resumes cleanly at 4,001 on the next run, never replaying finished work and never trusting a half-written result.
 
 `batchr` runs a Python function over a list of items (usually file paths)
 in parallel, across processes. Every result is cached under a content
@@ -155,3 +175,7 @@ Stdlib only, plus [`tqdm`](https://github.com/tqdm/tqdm) for progress
 bars (auto-disabled when stdout isn't a TTY). `numpy` is only imported
 lazily, inside the `npz` serializer path — it stays fully optional
 otherwise.
+
+## License
+
+MIT

@@ -77,6 +77,20 @@ def test_cli_run_status_failed_smoke(tmp_path):
     assert "5 cached" in result2.stdout
 
 
+def test_cli_run_fails_loudly_on_no_matching_items(tmp_path):
+    (tmp_path / "cli_worker.py").write_text(WORKER_SRC)
+    env = _env_with_pythonpath(tmp_path)
+    cache_dir = tmp_path / ".batchr"
+
+    result = _run_cli(
+        ["run", "--fn", "cli_worker:process", "--items", str(tmp_path / "nope_*.txt"),
+         "--cache-dir", str(cache_dir)],
+        cwd=tmp_path, env=env,
+    )
+    assert result.returncode == 2
+    assert "matched no files" in result.stderr
+
+
 def test_cli_run_exit_code_1_on_failures_and_failed_command_shows_traceback(tmp_path):
     data_dir = tmp_path / "data"
     data_dir.mkdir()

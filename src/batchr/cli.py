@@ -43,6 +43,13 @@ def _resolve_items(spec: str) -> list[str]:
 def _cmd_run(args: argparse.Namespace) -> int:
     fn = _import_fn(args.fn)
     items = _resolve_items(args.items)
+    if not items:
+        # Silently "succeeding" at 0 items looks identical to a legitimately
+        # empty run (same "0 ok, 0 cached, 0 failed", exit 0) -- for a typo'd
+        # glob or an empty directory, that's a no-op a pipeline can easily
+        # mistake for "everything ran fine". Fail loudly instead.
+        print(f"Error: --items {args.items!r} matched no files.", file=sys.stderr)
+        return 2
     config = None
     if args.config:
         with open(args.config) as f:
