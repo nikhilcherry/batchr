@@ -205,6 +205,25 @@ def test_unpicklable_closure_raises_value_error(tmp_path):
         run_batch(make_closure(), items, cache_dir=str(tmp_path / ".batchr"))
 
 
+def test_negative_workers_raises_value_error(tmp_path):
+    # workers or os.cpu_count() or 1 doesn't catch negative values (-1 is
+    # truthy), so it reached ProcessPoolExecutor(-1) directly, crashing
+    # with a raw, confusing "max_workers must be greater than 0" instead
+    # of a clear batchr-level error.
+    items = _make_files(tmp_path, 1)
+    with pytest.raises(ValueError, match="workers must be >= 0"):
+        run_batch(workers.read_upper, items, cache_dir=str(tmp_path / ".batchr"), workers=-1)
+
+
+def test_negative_retries_raises_value_error(tmp_path):
+    # retries=-1 makes range(retries + 1) == range(0) in _run_one, so the
+    # worker is never even attempted, silently returning a "failed" status
+    # with error=None instead of any indication retries was misconfigured.
+    items = _make_files(tmp_path, 1)
+    with pytest.raises(ValueError, match="retries must be >= 0"):
+        run_batch(workers.read_upper, items, cache_dir=str(tmp_path / ".batchr"), retries=-1)
+
+
 def test_getsource_fallback_warns_but_does_not_crash(tmp_path):
     items = _make_files(tmp_path, 2)
     fn = functools.partial(workers.read_upper_with_suffix, suffix="!")

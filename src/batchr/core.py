@@ -183,6 +183,10 @@ def run_batch(
 ) -> BatchReport:
     if serializer not in ("pickle", "json", "npz"):
         raise ValueError(f"Unknown serializer: {serializer!r}. Must be pickle, json, or npz.")
+    if workers < 0:
+        raise ValueError(f"workers must be >= 0 (0 = os.cpu_count()), got {workers}")
+    if retries < 0:
+        raise ValueError(f"retries must be >= 0, got {retries}")
     _check_picklable(fn)
 
     items = [str(item) for item in items]
