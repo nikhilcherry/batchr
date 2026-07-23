@@ -81,6 +81,11 @@ def test_purge_removes_old_entries(tmp_path):
     assert store.get("new_key") is not None
     assert store.stats()["entries"] == 1
 
+    # The now-empty "ol" shard dir should be cleaned up, not left as litter;
+    # "ne" (still holding new_key's file) must be untouched.
+    assert not (store.objects_dir / "ol").exists()
+    assert (store.objects_dir / "ne").exists()
+
 
 def test_put_overwrites_existing_key(tmp_path):
     store = CacheStore(tmp_path / ".batchr")

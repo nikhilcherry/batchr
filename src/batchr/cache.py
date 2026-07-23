@@ -191,6 +191,9 @@ class CacheStore:
                     path = self.cache_dir / path
                 if path.exists():
                     path.unlink()
+                    shard_dir = path.parent
+                    if shard_dir != self.objects_dir and not any(shard_dir.iterdir()):
+                        shard_dir.rmdir()
             conn.execute("DELETE FROM cache WHERE created_at < ?", (cutoff,))
             conn.commit()
         finally:
