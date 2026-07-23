@@ -271,3 +271,32 @@ def test_report_summary_and_failed_items_format(tmp_path):
     assert "2 ok" in summary
     assert "1 failed" in summary
     assert report.failed_items() == [i for i in items if "bad" in Path(i).name]
+
+
+def test_concurrent_save_last_report_does_not_crash(tmp_path):
+    # Two independently invoked `batchr run` processes sharing a cache_dir
+    # both finish by calling save_last_report() here. A deterministic tmp
+    # filename let one's os.replace() find the other's tmp file already
+    # gone, crashing with FileNotFoundError instead of completing.
+    import threading
+
+    from batchr.core import BatchReport, load_last_report, save_last_report
+
+    errors = []
+
+    def writer(i):
+        try:
+            report = BatchReport(total=1, ok=1, cached=0, failed=0, results=[], wall_time_s=0.1)
+            save_last_report(tmp_path, report)
+        except Exception as exc:
+            errors.append(exc)
+
+    threads = [threading.Thread(target=writer, args=(i,)) for i in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert errors == []
+    assert load_last_report(tmp_path) is not None
+    assert list(tmp_path.glob("*.tmp")) == []

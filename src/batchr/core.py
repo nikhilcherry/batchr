@@ -21,6 +21,7 @@ import json
 import os
 import pickle
 import sys
+import tempfile
 import time
 import warnings
 from dataclasses import dataclass
@@ -156,7 +157,13 @@ def save_last_report(cache_dir: str | Path, report: BatchReport) -> None:
     cache_dir = Path(cache_dir)
     cache_dir.mkdir(parents=True, exist_ok=True)
     path = cache_dir / "last_report.json"
-    tmp_path = path.with_name(path.name + ".tmp")
+    # Unique-per-call tmp name: two independently invoked `batchr run`
+    # processes sharing a cache_dir both finish by writing last_report.json
+    # here, and a deterministic tmp path let one's os.replace() find the
+    # other's tmp file already gone.
+    fd, tmp_name = tempfile.mkstemp(dir=cache_dir, prefix=f".{path.name}-", suffix=".tmp")
+    os.close(fd)
+    tmp_path = Path(tmp_name)
     with open(tmp_path, "w") as f:
         json.dump(_report_to_dict(report), f, indent=2)
     os.replace(tmp_path, path)
